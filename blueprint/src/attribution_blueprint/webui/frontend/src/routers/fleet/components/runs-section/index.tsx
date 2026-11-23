@@ -86,28 +86,37 @@ function ResponsibleNodes({ nodes }: { nodes: string[] }) {
   )
 }
 
-function searchHint(r: RunSummary, query = ''): string | undefined {
-  const needle = query.trim().toLowerCase()
+function searchHint(r: RunSummary, query = '') {
+  const needle = query.trim()
   if (!needle) return
-  const matches = (value: string) => value.toLowerCase().includes(needle)
+  const pattern = new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
   const visible = [r.jobId, r.user, r.rootSymptom.symptom, ...r.responsibleNodes.slice(0, RESPONSIBLE_NODE_INLINE_LIMIT)]
-  if (visible.some(matches)) return
-  if (matches(r.rootSymptom.rule)) return `Matched in rule: ${r.rootSymptom.rule}`
-  const responsible = r.responsibleNodes.find(matches)
-  if (responsible) return `Matched in responsible node: ${responsible}`
-  const allocated = r.nodeIds.find(matches)
-  if (allocated) return `Matched in allocated node: ${allocated}`
-  if (matches(r.attemptUid)) return `Matched in attempt ID: ${r.attemptUid}`
-  for (const [label, text] of [['run details', r.detail], ['log line', r.rootSymptom.line]]) {
-    const matchAt = text.toLowerCase().indexOf(needle)
-    if (matchAt < 0) continue
-    const width = Math.max(100, needle.length)
-    const start = Math.max(0, Math.min(matchAt - Math.floor((width - needle.length) / 2), text.length - width))
+  if (visible.some(value => pattern.test(value))) return
+
+  const fields: [string, string][] = [
+    ['rule', r.rootSymptom.rule],
+    ...r.responsibleNodes.slice(RESPONSIBLE_NODE_INLINE_LIMIT).map((node): [string, string] => ['responsible node', node]),
+    ...r.nodeIds.map((node): [string, string] => ['allocated node', node]),
+    ['attempt ID', r.attemptUid],
+    ['run details', r.detail],
+    ['log line', r.rootSymptom.line],
+  ]
+  for (const [label, text] of fields) {
+    const match = pattern.exec(text)
+    if (!match) continue
+    const clip = label === 'run details' || label === 'log line'
+    const width = clip ? Math.max(100, needle.length) : text.length
+    const start = Math.max(0, Math.min(match.index - Math.floor((width - needle.length) / 2), text.length - width))
     const end = start + width
-    const excerpt = text.slice(start, end)
-    return `Matched in ${label}: ${start > 0 ? '…' : ''}${excerpt}${end < text.length ? '…' : ''}`
+    return (
+      <>
+        Matched in {label}: {start > 0 && '…'}{text.slice(start, match.index)}
+        <mark className="bg-transparent font-semibold text-foreground">{match[0]}</mark>
+        {text.slice(match.index + match[0].length, end)}{end < text.length && '…'}
+      </>
+    )
   }
-  return 'Matched in run details'
+  return 'Search matched the full run record.'
 }
 
 function RunRow({ r, query }: { r: RunSummary; query?: string }) {

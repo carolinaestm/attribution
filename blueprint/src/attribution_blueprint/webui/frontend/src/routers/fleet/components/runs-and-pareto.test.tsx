@@ -279,7 +279,8 @@ describe('RunsSection', () => {
     />)
     for (const [i, line] of lines.entries()) {
       const row = screen.getByRole('link', { name: runs[i].jobId }).closest('tr')!
-      expect(within(row).getByText(`Matched in log line: ${line}`)).toBeTruthy()
+      const marked = within(row).getByText(address, { selector: 'mark' })
+      expect(marked.parentElement?.textContent).toBe(`Matched in log line: ${line}`)
     }
   })
 
@@ -294,7 +295,9 @@ describe('RunsSection', () => {
       setFilter={vi.fn()} pageByOutcome={{}} pageSize={10} setPageSize={vi.fn()} setGroupPage={vi.fn()}
     />)
     const hint = typeof expected === 'string' ? `Matched in run details: ${expected}` : expected
-    expect(screen.getByText(hint)).toBeTruthy()
+    const text = screen.getByText('double-bit', { selector: 'mark' }).parentElement?.textContent
+    if (typeof hint === 'string') expect(text).toBe(hint)
+    else expect(text).toMatch(hint)
   })
 
   it('explains a hidden node match and removes the hint for visible or cleared searches', () => {
@@ -307,12 +310,15 @@ describe('RunsSection', () => {
     const table = (q?: string) => <RunsSection {...props} filter={{ ...filter, q }} />
     const { rerender } = renderInRouter(table('node-d'))
     const result = () => within(screen.getByRole('link', { name: 'team/job' }).closest('tr')!)
-    expect(result().getByText('Matched in responsible node: node-d')).toBeTruthy()
+    expect(result().getByText('node-d', { selector: 'mark' }).parentElement?.textContent).toBe('Matched in responsible node: node-d')
     rerender(table('node-a'))
     expect(result().getByRole('link', { name: 'node-a' })).toBeTruthy()
     expect(result().queryByText(/^Matched in /)).toBeNull()
     rerender(table('node-d'))
-    expect(result().getByText('Matched in responsible node: node-d')).toBeTruthy()
+    expect(result().getByText('node-d', { selector: 'mark' }).parentElement?.textContent).toBe('Matched in responsible node: node-d')
+    rerender(table('raw.payload[0]'))
+    expect(result().getByText('Search matched the full run record.')).toBeTruthy()
+    expect(result().queryByText(/./, { selector: 'mark' })).toBeNull()
     rerender(table())
     expect(result().queryByText(/^Matched in /)).toBeNull()
   })
