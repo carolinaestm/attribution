@@ -86,7 +86,32 @@ function ResponsibleNodes({ nodes }: { nodes: string[] }) {
   )
 }
 
-function RunRow({ r }: { r: RunSummary }) {
+function searchHint(r: RunSummary, query = ''): string | undefined {
+  const needle = query.trim().toLowerCase()
+  if (!needle) return
+  const matches = (value: string) => value.toLowerCase().includes(needle)
+  const visible = [r.jobId, r.user, r.rootSymptom.symptom, ...r.responsibleNodes.slice(0, RESPONSIBLE_NODE_INLINE_LIMIT)]
+  if (visible.some(matches)) return
+  if (matches(r.rootSymptom.rule)) return `Matched in rule: ${r.rootSymptom.rule}`
+  const responsible = r.responsibleNodes.find(matches)
+  if (responsible) return `Matched in responsible node: ${responsible}`
+  const allocated = r.nodeIds.find(matches)
+  if (allocated) return `Matched in allocated node: ${allocated}`
+  if (matches(r.attemptUid)) return `Matched in attempt ID: ${r.attemptUid}`
+  for (const [label, text] of [['run details', r.detail], ['log line', r.rootSymptom.line]]) {
+    const matchAt = text.toLowerCase().indexOf(needle)
+    if (matchAt < 0) continue
+    const width = Math.max(100, needle.length)
+    const start = Math.max(0, Math.min(matchAt - Math.floor((width - needle.length) / 2), text.length - width))
+    const end = start + width
+    const excerpt = text.slice(start, end)
+    return `Matched in ${label}: ${start > 0 ? '…' : ''}${excerpt}${end < text.length ? '…' : ''}`
+  }
+  return 'Matched in run details'
+}
+
+function RunRow({ r, query }: { r: RunSummary; query?: string }) {
+  const hint = searchHint(r, query)
   const nav = useNav()
   return (
     <TableRow
@@ -104,6 +129,7 @@ function RunRow({ r }: { r: RunSummary }) {
           instead of running past it. */}
       <TableCell wrap>
         <RouterLink to={navigateService.getPath('verdict', { id: r.id })}><Identifier>{r.jobId}</Identifier></RouterLink>
+        {hint && <span className="block break-words text-xs text-foreground-muted">{hint}</span>}
       </TableCell>
       <TableCell wrap>{r.user ? <Identifier>{r.user}</Identifier> : <NoValue />}</TableCell>
       <TableCell className="num text-right">{r.gpuCount}</TableCell>
@@ -292,7 +318,7 @@ export function RunsSection({
                           </TableCell>
                         </TableRow>
                       ))
-                    : g.runs.map((r) => <RunRow key={r.id} r={r} />)}
+                    : g.runs.map((r) => <RunRow key={r.id} r={r} query={filter.q} />)}
                   {/* The pager stays for any group the smallest page size would
                       page, so choosing a size that fits the whole group keeps
                       the select, and the keyboard focus on it, in place. */}

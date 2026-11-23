@@ -266,6 +266,57 @@ describe('RunsToolbar', () => {
 })
 
 describe('RunsSection', () => {
+  it('shows each run’s own log line for a shared hardware address', () => {
+    const address = 'PCI:0000:81:00'
+    const lines = [`${address}: Double-bit ECC error`, `${address}: NVLINK_RLW_ERROR`]
+    const runs = lines.map((line, i) => run({
+      id: `run-${i}`, jobId: `job-${i}`, rootSymptom: { ...run().rootSymptom, line },
+    }))
+    renderInRouter(<RunsSection
+      groups={[{ outcome: 'hardware', runs, total: 2, page: 0, pageSize: 10 }]}
+      matchingRuns={2} visibleRuns={runs} filter={{ ...filter, q: address.toLowerCase() }}
+      setFilter={vi.fn()} pageByOutcome={{}} pageSize={10} setPageSize={vi.fn()} setGroupPage={vi.fn()}
+    />)
+    for (const [i, line] of lines.entries()) {
+      const row = screen.getByRole('link', { name: runs[i].jobId }).closest('tr')!
+      expect(within(row).getByText(`Matched in log line: ${line}`)).toBeTruthy()
+    }
+  })
+
+  it.each([
+    ['Uncontained double-bit ECC error on node 12.', 'Uncontained double-bit ECC error on node 12.'],
+    ['x'.repeat(140) + ' double-bit ECC error ' + 'y'.repeat(140), /^Matched in run details: ….{1,50}double-bit ECC error.{1,50}…$/],
+  ] as const)('shows the matching passage from the run details', (detail, expected) => {
+    const sample = run({ detail })
+    renderInRouter(<RunsSection
+      groups={[{ outcome: 'hardware', runs: [sample], total: 1, page: 0, pageSize: 10 }]}
+      matchingRuns={1} visibleRuns={[sample]} filter={{ ...filter, q: ' DOUBLE-BIT ' }}
+      setFilter={vi.fn()} pageByOutcome={{}} pageSize={10} setPageSize={vi.fn()} setGroupPage={vi.fn()}
+    />)
+    const hint = typeof expected === 'string' ? `Matched in run details: ${expected}` : expected
+    expect(screen.getByText(hint)).toBeTruthy()
+  })
+
+  it('explains a hidden node match and removes the hint for visible or cleared searches', () => {
+    const sample = run()
+    const props = {
+      groups: [{ outcome: 'hardware' as const, runs: [sample], total: 1, page: 0, pageSize: 10 }],
+      matchingRuns: 1, visibleRuns: [sample], setFilter: vi.fn(), pageByOutcome: {},
+      pageSize: 10, setPageSize: vi.fn(), setGroupPage: vi.fn(),
+    }
+    const table = (q?: string) => <RunsSection {...props} filter={{ ...filter, q }} />
+    const { rerender } = renderInRouter(table('node-d'))
+    const result = () => within(screen.getByRole('link', { name: 'team/job' }).closest('tr')!)
+    expect(result().getByText('Matched in responsible node: node-d')).toBeTruthy()
+    rerender(table('node-a'))
+    expect(result().getByRole('link', { name: 'node-a' })).toBeTruthy()
+    expect(result().queryByText(/^Matched in /)).toBeNull()
+    rerender(table('node-d'))
+    expect(result().getByText('Matched in responsible node: node-d')).toBeTruthy()
+    rerender(table())
+    expect(result().queryByText(/^Matched in /)).toBeNull()
+  })
+
   it('renders one header row, grouped rows, links, node overflow, collapse, and pagination', () => {
     const setPageSize = vi.fn()
     const setGroupPage = vi.fn()
